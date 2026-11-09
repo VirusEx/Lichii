@@ -69,11 +69,17 @@ TEST_CASE("The default limit fits the disk cache loaded at boot",
     static_assert(KeptPipelinesForCache(MaxKeptPipelines) == MaxKeptPipelines);
 }
 
-TEST_CASE("The cap on kept pipelines grows with RAM", "[video_core][pipeline_eviction]") {
+TEST_CASE("The cap on kept pipelines is a quarter of the RAM", "[video_core][pipeline_eviction]") {
     constexpr u64 GiB = u64{1} << 30;
-    // Up to 16 GiB the cap stays at the fixed one.
-    REQUIRE(MaxKeptPipelinesForMemory(0) == MaxKeptPipelines);
-    REQUIRE(MaxKeptPipelinesForMemory(8 * GiB) == MaxKeptPipelines);
+    // A failed memory query falls back to the base limit.
+    REQUIRE(MaxKeptPipelinesForMemory(0) == DefaultKeptPipelines);
+    // Small machines keep what fits (8 GiB: ~2 GiB of pipelines), and the base limit never
+    // exceeds the cap.
+    REQUIRE(MaxKeptPipelinesForMemory(4 * GiB) == 3495);
+    REQUIRE(KeptPipelinesForCache(0, MaxKeptPipelinesForMemory(4 * GiB)) == 3495);
+    REQUIRE(KeptPipelinesForCache(7316, MaxKeptPipelinesForMemory(4 * GiB)) == 3495);
+    REQUIRE(MaxKeptPipelinesForMemory(8 * GiB) == 6990);
+    REQUIRE(KeptPipelinesForCache(7316, MaxKeptPipelinesForMemory(8 * GiB)) == 6990);
     REQUIRE(MaxKeptPipelinesForMemory(16 * GiB) == 13981);
     // 32 GiB fits a quarter of it: OoT's ~15,000-pipeline cache stays built.
     REQUIRE(MaxKeptPipelinesForMemory(32 * GiB) == 27962);

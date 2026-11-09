@@ -22,27 +22,31 @@ inline constexpr size_t DefaultKeptPipelines = 4096;
 /// pipelines at boot added 3.4 GiB of committed memory (~0.27 MiB each, NVIDIA).
 inline constexpr u64 PipelineBytes = 300 * 1024;
 
-/// The most built pipelines kept by default on any machine (~3.5 GiB).
+/// The cap KeptPipelinesForCache applies when it is given none (~3.5 GiB).
 inline constexpr size_t MaxKeptPipelines = 12288;
 
 /// The most built pipelines kept by default on a machine with `total_memory` bytes of RAM: as many
-/// as fit in a quarter of it, and never fewer than MaxKeptPipelines. A disk cache grows with every
-/// new area (OoT: 13,023 pipelines after ~6 hours); past the cap, the pipelines of a screen used
-/// now and then, like the pause menu, are evicted and built again each time it opens.
+/// as fit in a quarter of it (8 GiB: 6,990; 32 GiB: 27,962). A disk cache grows with every new
+/// area (OoT: 13,023 pipelines after ~6 hours); past the cap, the pipelines of a screen used now
+/// and then, like the pause menu, are evicted and built again each time it opens. A failed memory
+/// query (`total_memory` 0) gives DefaultKeptPipelines.
 constexpr size_t MaxKeptPipelinesForMemory(u64 total_memory) {
-    const u64 fit = total_memory / 4 / PipelineBytes;
-    return fit < MaxKeptPipelines ? MaxKeptPipelines : static_cast<size_t>(fit);
+    if (total_memory == 0) {
+        return DefaultKeptPipelines;
+    }
+    return static_cast<size_t>(total_memory / 4 / PipelineBytes);
 }
 
 /// Default limit for a session that loaded `cached_at_boot` pipelines from the disk cache: the
 /// whole cache plus room for new content, so the cache's own pipelines are not evicted and built
 /// again on the GPU thread (OoT, 7,316 cached with a limit of 4096: 3,925 evicted, 1,395 rebuilt),
-/// up to `max_kept` (MaxKeptPipelinesForMemory).
+/// up to `max_kept` (MaxKeptPipelinesForMemory). On a machine whose cap is below
+/// DefaultKeptPipelines, the cap is the limit.
 constexpr size_t KeptPipelinesForCache(size_t cached_at_boot,
                                        size_t max_kept = MaxKeptPipelines) {
     const size_t wanted = cached_at_boot + DefaultKeptPipelines / 4;
-    return wanted < DefaultKeptPipelines ? DefaultKeptPipelines
-                                         : (wanted > max_kept ? max_kept : wanted);
+    const size_t base = std::min(DefaultKeptPipelines, max_kept);
+    return wanted < base ? base : (wanted > max_kept ? max_kept : wanted);
 }
 
 /// Picks which unused pipelines to destroy so that at most `kept` stay built.
