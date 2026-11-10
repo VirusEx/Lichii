@@ -6,9 +6,7 @@
 #include "video_core/renderer_vulkan/pipeline_eviction_policy.h"
 
 using Vulkan::DefaultKeptPipelines;
-using Vulkan::KeptPipelinesForCache;
-using Vulkan::MaxKeptPipelines;
-using Vulkan::MaxKeptPipelinesForMemory;
+using Vulkan::KeptPipelinesForMemory;
 using Vulkan::PipelinesToEvict;
 
 namespace {
@@ -57,34 +55,15 @@ TEST_CASE("Recently used pipelines count toward the limit but are never picked",
             std::vector<size_t>{0, 1, 2});
 }
 
-TEST_CASE("The default limit fits the disk cache loaded at boot",
-          "[video_core][pipeline_eviction]") {
-    // A small or empty cache keeps the base limit.
-    REQUIRE(KeptPipelinesForCache(0) == DefaultKeptPipelines);
-    REQUIRE(KeptPipelinesForCache(1600) == DefaultKeptPipelines);
-    // OoT's 7,316 cached pipelines all fit, with room for 1,024 new ones.
-    REQUIRE(KeptPipelinesForCache(7316) == 7316 + DefaultKeptPipelines / 4);
-    // A huge cache is capped, so it can't hold its driver memory without bound.
-    REQUIRE(KeptPipelinesForCache(48'000) == MaxKeptPipelines);
-    static_assert(KeptPipelinesForCache(MaxKeptPipelines) == MaxKeptPipelines);
-}
-
-TEST_CASE("The cap on kept pipelines is a quarter of the RAM", "[video_core][pipeline_eviction]") {
+TEST_CASE("The automatic limit is a quarter of the RAM", "[video_core][pipeline_eviction]") {
     constexpr u64 GiB = u64{1} << 30;
     // A failed memory query falls back to the base limit.
-    REQUIRE(MaxKeptPipelinesForMemory(0) == DefaultKeptPipelines);
-    // Small machines keep what fits (8 GiB: ~2 GiB of pipelines), and the base limit never
-    // exceeds the cap.
-    REQUIRE(MaxKeptPipelinesForMemory(4 * GiB) == 3495);
-    REQUIRE(KeptPipelinesForCache(0, MaxKeptPipelinesForMemory(4 * GiB)) == 3495);
-    REQUIRE(KeptPipelinesForCache(7316, MaxKeptPipelinesForMemory(4 * GiB)) == 3495);
-    REQUIRE(MaxKeptPipelinesForMemory(8 * GiB) == 6990);
-    REQUIRE(KeptPipelinesForCache(7316, MaxKeptPipelinesForMemory(8 * GiB)) == 6990);
-    REQUIRE(MaxKeptPipelinesForMemory(16 * GiB) == 13981);
-    // 32 GiB fits a quarter of it: OoT's ~15,000-pipeline cache stays built.
-    REQUIRE(MaxKeptPipelinesForMemory(32 * GiB) == 27962);
-    REQUIRE(KeptPipelinesForCache(15'000, MaxKeptPipelinesForMemory(32 * GiB)) == 16'024);
-    // The cache size still decides below the cap.
-    REQUIRE(KeptPipelinesForCache(7316, MaxKeptPipelinesForMemory(32 * GiB)) == 8340);
-    REQUIRE(KeptPipelinesForCache(48'000, MaxKeptPipelinesForMemory(32 * GiB)) == 27962);
+    REQUIRE(KeptPipelinesForMemory(0) == DefaultKeptPipelines);
+    // Small machines keep what fits (8 GiB: ~2 GiB of pipelines).
+    REQUIRE(KeptPipelinesForMemory(4 * GiB) == 3495);
+    REQUIRE(KeptPipelinesForMemory(8 * GiB) == 6990);
+    REQUIRE(KeptPipelinesForMemory(16 * GiB) == 13981);
+    // 32 GiB keeps OoT's ~15,000-pipeline cache built, and a session that rebuilds a cleared
+    // cache (5,598 new pipelines in 82 min) never reaches the limit.
+    REQUIRE(KeptPipelinesForMemory(32 * GiB) == 27962);
 }

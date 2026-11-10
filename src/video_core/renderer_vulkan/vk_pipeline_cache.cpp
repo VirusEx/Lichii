@@ -95,7 +95,7 @@ using VideoCommon::GuessMissing;
 using VideoCommon::GraphicsEnvironment;
 
 constexpr u32 CACHE_VERSION = VideoCommon::VulkanPipelineCacheVersion;
-size_t KeptPipelines(size_t cached_at_boot);
+size_t KeptPipelines();
 constexpr size_t VULKAN_CACHE_FLUSH_PIPELINES = 128;
 constexpr size_t VULKAN_CACHE_FLUSH_MIN_SECONDS = 30;
 constexpr auto& VULKAN_CACHE_MAGIC_NUMBER = VideoCommon::VulkanDriverPipelineCacheMagic;
@@ -694,7 +694,7 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     }
 
     LOG_INFO(Render_Vulkan, "DynamicState setting value: {}", u32(Settings::values.dyna_state.GetValue()));
-    kept_pipelines.store(KeptPipelines(0), std::memory_order::relaxed);
+    kept_pipelines.store(KeptPipelines(), std::memory_order::relaxed);
     LogEvictionPolicy();
 
     dynamic_features = {};
@@ -825,13 +825,12 @@ bool PreloadAllPipelines() {
 // A graphics pipeline unused for this many frames (~2.5 min at 60 FPS) may be destroyed.
 constexpr u64 EvictAfterFrames = 9000;
 
-/// Built graphics pipelines kept before unused ones are destroyed, for a session that loaded
-/// `cached_at_boot` pipelines from the disk cache. 0 is the old eviction, used on Android: every
-/// pipeline unused for EvictAfterFrames is destroyed except up to MaxUnusedPrebuiltPipelines
-/// prebuilt ones no draw has used. On desktop the pipeline_eviction_threshold setting sets the
-/// limit; at 0 (automatic) it fits the disk cache (KeptPipelinesForCache), up to a cap that grows
-/// with the machine's RAM (MaxKeptPipelinesForMemory).
-size_t KeptPipelines(size_t cached_at_boot) {
+/// Built graphics pipelines kept before unused ones are destroyed. 0 is the old eviction, used on
+/// Android: every pipeline unused for EvictAfterFrames is destroyed except up to
+/// MaxUnusedPrebuiltPipelines prebuilt ones no draw has used. On desktop the
+/// pipeline_eviction_threshold setting sets the limit; at 0 (automatic) it grows with the
+/// machine's RAM (KeptPipelinesForMemory).
+size_t KeptPipelines() {
 #ifdef __ANDROID__
     return 0;
 #else
@@ -839,9 +838,9 @@ size_t KeptPipelines(size_t cached_at_boot) {
         threshold != 0) {
         return threshold;
     }
-    static const size_t max_kept =
-        MaxKeptPipelinesForMemory(Common::GetMemInfo().TotalPhysicalMemory);
-    return KeptPipelinesForCache(cached_at_boot, max_kept);
+    static const size_t for_memory =
+        KeptPipelinesForMemory(Common::GetMemInfo().TotalPhysicalMemory);
+    return for_memory;
 #endif
 }
 } // Anonymous namespace
@@ -1566,8 +1565,6 @@ void PipelineCache::LoadPipelinesV2(u64 title_id,
     }
 
     LOG_INFO(Render_Vulkan, "Total Pipeline Count: {}", state.total);
-    kept_pipelines.store(KeptPipelines(state.total), std::memory_order::relaxed);
-    LogEvictionPolicy();
     if (skipped_pipelines != 0) {
         LOG_INFO(Render_Vulkan,
                  "{} cached graphics pipelines skipped at boot, {} {} for background prebuild",

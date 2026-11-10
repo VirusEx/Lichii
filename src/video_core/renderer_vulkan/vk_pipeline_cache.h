@@ -124,8 +124,7 @@ struct ComputePipelineCacheEntry {
 
 class PipelineCache : public VideoCommon::ShaderCache {
 public:
-    /// Sets the eviction limit for a session with no disk cache yet; LoadDiskResources sizes it
-    /// to the cache it loads.
+    /// Sets the eviction limit from pipeline_eviction_threshold, or from the RAM when it is 0.
     explicit PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_, const Device& device,
                            Scheduler& scheduler, DescriptorPool& descriptor_pool,
                            GuestDescriptorQueue& guest_descriptor_queue,
